@@ -51,13 +51,34 @@ class MLEModel:
                 self.posteriors_size += 1
                 self.update_dic(w,t,self.posteriors)
 
+    # For now, prior and posterior are calculated independent of each other using MLE with add-alpha discounting
+    
     def get_prior_mle(self,alpha):
         distribution = {}
         V = len(self.priors.keys())
         for (term,ts) in self.priors.items():
             distribution[term] = (len(ts) + alpha)/(self.priors_size + alpha*V)
 
-        return distribution
+        alpha_boost = alpha / (self.priors_size + alpha*V)
+        return defaultdict(lambda: alpha_boost, distribution)
+
+    def get_posterior_mle(self,alpha):
+        distribution = {}
+        V = len(self.posteriors.keys())
+        for (term,ts) in self.posteriors.items():
+            distribution[term] = (len(ts) + alpha)/(self.posteriors_size + alpha*V)
+
+        alpha_boost = alpha / (self.posteriors_size + alpha*V)
+        return defaultdict(lambda: alpha_boost, distribution)
+
+    # Returns D_KL, divergence from prior to posterior 
+    def kl_divergence(self,alpha):
+        d_kl = 0
+        prior_mle = self.get_prior_mle(alpha)
+        post_mle = self.get_posterior_mle(alpha)
+        for (word,prob) in list(post_mle.items()):
+            d_kl += prob * math.log(prob/(prior_mle[word]))
+        return d_kl
 
 
 
