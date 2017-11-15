@@ -26,7 +26,7 @@ class MLEModel:
         # for each term in priors, shift window by slicing out timestamps older than t0
         for (k,v) in self.priors.items():
             new_start = np.argmax(np.array(v)>t0)
-            self.priors[k] = [new_start:]
+            self.priors[k] = self.priors[k][new_start:]
             self.priors_size -= new_start
 
         ### ADD NEW TERMS ####
@@ -42,7 +42,7 @@ class MLEModel:
         # for each term in priors, shift window by slicing out timestamps older than t0
         for (k,v) in self.posteriors.items():
             new_start = np.argmax(np.array(v)>t0)
-            self.posteriors[k] = [new_start:]
+            self.posteriors[k] = self.posteriors[k][new_start:]
             self.posteriors_size -= new_start
 
         ### ADD NEW TERMS ####
