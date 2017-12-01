@@ -1,5 +1,7 @@
 from collections import defaultdict
 import numpy as np
+import math
+from sklearn.feature_extraction.text import CountVectorizer
 
 class MLEModel:
 
@@ -16,6 +18,7 @@ class MLEModel:
     def update_dic(self,w,t,dic):
         if w in dic:
             dic[w].append(t)
+            dic[w] = sorted(dic[w])
         else:
             dic[w] = [t]
 
@@ -25,9 +28,14 @@ class MLEModel:
         #### GET RID OF OLD TERMS ####
         # for each term in priors, shift window by slicing out timestamps older than t0
         for (k,v) in self.priors.items():
-            new_start = np.argmax(np.array(v)>t0)
-            self.priors[k] = self.priors[k][new_start:]
-            self.priors_size -= new_start
+            if len(v) > 0:
+                if (np.array(v)>t0).all() == False: # all tweets are stale
+                    self.priors_size -= len(v)
+                    self.priors[k] = []
+                else:
+                    new_start = np.argmax(np.array(v)>t0)
+                    self.priors[k] = self.priors[k][new_start:]
+                    self.priors_size -= new_start
 
         ### ADD NEW TERMS ####
         for (body,t) in tweets:
@@ -41,9 +49,14 @@ class MLEModel:
         #### GET RID OF OLD TERMS ####
         # for each term in priors, shift window by slicing out timestamps older than t0
         for (k,v) in self.posteriors.items():
-            new_start = np.argmax(np.array(v)>t0)
-            self.posteriors[k] = self.posteriors[k][new_start:]
-            self.posteriors_size -= new_start
+            if len(v) > 0:
+                if (np.array(v)>t0).all() == False: # all tweets are stale
+                    self.posteriors_size -= len(v)
+                    self.posteriors[k] = []
+                else:
+                    new_start = np.argmax(np.array(v)>t0)
+                    self.posteriors[k] = self.posteriors[k][new_start:]
+                    self.posteriors_size -= new_start
 
         ### ADD NEW TERMS ####
         for (body,t) in tweets:
@@ -79,6 +92,9 @@ class MLEModel:
         for (word,prob) in list(post_mle.items()):
             d_kl += prob * math.log(prob/(prior_mle[word]))
         return d_kl
+
+    def __repr__(self):
+        return 'P: ' + str(self.posteriors_size) + ", Q: " + str(self.priors_size) + ", divergence: " + str(self.kl_divergence(0.01))
 
 
 
