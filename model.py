@@ -6,19 +6,24 @@ from sklearn.feature_extraction.text import CountVectorizer
 class MLEModel:
 
     def __init__(self, location):
+
         # location for now is represented by (lang,timezone) and is unique to the model
         self.location = location
+
         # initialize prior and posterior dicts, where key=term and value=ascending list of timestamps at which the term was tweeted
         self.priors = {}
         self.posteriors = {}
         self.priors_size = 0
         self.posteriors_size = 0
 
+        # EWMA mean and std dev of KL divergence
+        self.mean_kld = None 
+        self.dev_kld = None
+
     # update unigram count for one term
     def update_dic(self,w,t,dic):
         if w in dic:
             dic[w].append(t)
-            dic[w] = sorted(dic[w])
         else:
             dic[w] = [t]
 
@@ -85,7 +90,8 @@ class MLEModel:
         return defaultdict(lambda: alpha_boost, distribution)
 
     # Returns D_KL, divergence from prior to posterior 
-    def kl_divergence(self,alpha):
+    def kl_divergence(self):
+        alpha = 0.01
         d_kl = 0
         prior_mle = self.get_prior_mle(alpha)
         post_mle = self.get_posterior_mle(alpha)
@@ -93,8 +99,29 @@ class MLEModel:
             d_kl += prob * math.log(prob/(prior_mle[word]))
         return d_kl
 
+    def get_mean_kld(self):
+        return self.mean_kld
+
+    def get_dev_kld(self):
+        return self.dev_kld
+
+    def update_kld_distribution(self):
+        alpha = 0.125
+        beta = 0.25
+
+        r = self.kl_divergence()
+        if self.mean_kld == None:
+            self.mean_kld = r
+        else:
+            self.mean_kld = alpha*r + (1-alpha)*self.mean_kld
+        dev = abs(r-self.mean_kld)
+        if self.dev_kld == None:
+            self.dev_kld = dev
+        else:
+            self.dev_kld = beta*dev + (1-beta)*self.dev_kld
+
     def __repr__(self):
-        return 'P: ' + str(self.posteriors_size) + ", Q: " + str(self.priors_size) + ", divergence: " + str(self.kl_divergence(0.01))
+        return "KLD: " + str(round(self.kl_divergence(),4)) + ", mean: " + str(round(self.get_mean_kld(),4)) + ", std dev: " + str(round(self.get_dev_kld(),4))
 
 
 

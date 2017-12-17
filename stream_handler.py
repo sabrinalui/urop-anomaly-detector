@@ -1,4 +1,5 @@
 import tweepy
+import ipdb
 import pytz
 from datetime import datetime
 import re
@@ -19,9 +20,12 @@ class StreamingAnomalyHandler(tweepy.StreamListener):
 		super(StreamingAnomalyHandler, self).__init__()
 
 	def on_status(self, status):
-		(tweet,loc) = self.sanitize(status)
-		if loc[0] != None and loc[1] != None:
-			self.tweet_buffer[loc].append(tweet)
+		if status.user.lang == "en":
+			(tweet,loc) = self.sanitize(status)
+			if loc != None:
+				self.tweet_buffer[loc].append(tweet)
+		# if loc != None:
+		# 	self.tweet_buffer[loc.country].append(tweet)
 
 	def sanitize(self, status):
 		body_words = status.text.split()
@@ -29,11 +33,9 @@ class StreamingAnomalyHandler(tweepy.StreamListener):
 		filtered_words = [word for word in body_words if word.lower() not in stop_words]
 		body = ' '.join(filtered_words)
 		body = re.sub(r"http\S+", "<URL>",body)
-		loc = (status.user.lang,status.user.time_zone)
+		loc = status.user.time_zone
+		# loc = status.place
 		return ((body,timestamp),loc)
-
-	def write_models(self, models):
-		pickle.dump(models, open("modeldump.pkl","wb"))
 
 	def get_buffer(self):
 		return self.tweet_buffer
@@ -50,22 +52,38 @@ class UpdaterThread(Thread):
 		self.models = {}
 		self.t0, self.t1 = t0,t1
 		self.handler = handler
+		self.a = 0
 
 	def run(self):
 		while not self.stopped.wait(self.t1):
 			self.update_models()
 
+	def write_models(self):
+		pickle.dump(self.models, open("modeldump.p","wb"))
+
 	def update_models(self):
 		curr_time = datetime.utcnow()
-		buffer_copy = dict(self.handler.get_buffer()).items()
-		for loc,tweets in buffer_copy:
+		buffer_copy = dict(self.handler.get_buffer())
+		for loc,tweets in buffer_copy.items():
 			if loc not in self.models:
 				self.models[loc] = MLEModel(loc)
 			self.models[loc].update_priors(tweets,int(curr_time.timestamp())-self.t0)
 			self.models[loc].update_posteriors(tweets,int(curr_time.timestamp())-self.t1)
+			self.models[loc].update_kld_distribution()
 		
+		self.write_models()
 		print("Models updated.")
 
+
+		potential_anomalies = {}
+		for (loc,model) in self.models.items():
+			# if divergence of tweets is 1 std away from mean, there are potential anomalies
+			if abs(model.kl_divergence()-model.get_mean_kld()) > model.get_dev_kld():
+				if loc in buffer_copy:
+					potential_anomalies[loc] = buffer_copy[loc] # tweets that caused the anomaly by location
 		self.handler.clear_buffer()
-		for model in self.models.items():
-			print(repr(model))
+
+		if len(potential_anomalies) > 0:
+			print("Potential anomalies found.")
+			pickle.dump(potential_anomalies, open("potential_anomalies.p","wb"))
+
